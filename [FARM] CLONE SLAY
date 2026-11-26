@@ -5,8 +5,22 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local nguoi_choi = Players.LocalPlayer
 
-local toa_do_moi = Vector3.new(1.9003, 6.8502, 373.2091) -- TỌA ĐỘ MỚI CỦA BẠN
+local toa_do_moi = Vector3.new(1.9003, 6.9502, 373.2091)
 local huong_moi = CFrame.new(toa_do_moi)
+
+-- === THÊM MỚI: hướng và khoảng di chuyển thêm sau khi tới đích ===
+local khoang_di_them = 15
+local huong_di_them = Vector3.new(0, 0, 1)
+local da_di_chuyen_them = false
+-- ================================================================
+
+-- === THÊM MỚI: cấu hình laser bob (lên xuống nhẹ) ===
+local laser_bien_do = 1.5      -- biên độ dao động (studs)
+local laser_toc_do = 3         -- tốc độ dao động
+local laser_kich_thuoc_mong = Vector3.new(20, 0.5, 20) -- laser mỏng hơn (Y = 0.5)
+local ket_noi_laser_bob = nil
+local thoi_gian_bob = 0
+-- =====================================================
 
 local ban_kinh_kich_hoat = 50
 local ban_kinh_tam = 2
@@ -22,10 +36,25 @@ local ket_noi_heartbeat = nil
 local ket_noi_hoi_sinh = nil
 local thoi_gian_dung_tam = 0
 
--- Bảng lưu trạng thái va chạm của tường
-local tuong_da_tat = {}
+-- === THÊM MỚI: xoá LargeBuilding1 một lần duy nhất lúc chạy code ===
+local da_xoa_large_building = false
+local function xoa_large_building()
+    if da_xoa_large_building then return end
+    local found = false
+    for _, vat_the in ipairs(Workspace:GetDescendants()) do
+        if vat_the.Name == "LargeBuilding1" then
+            vat_the:Destroy()
+            found = true
+        end
+    end
+    if found then
+        da_xoa_large_building = true
+    end
+end
+xoa_large_building()
+-- ================================================================
 
--- GUI
+-- GUI (giữ nguyên)
 local giao_dien = Instance.new("ScreenGui")
 giao_dien.Name = "BangDieuKhien"
 giao_dien.ResetOnSpawn = false
@@ -128,39 +157,7 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- HÀM BẬT NOCLIP TƯỜNG (KHÔNG XUYÊN SÀN)
-local function bat_noclip_tuong()
-    for _, vat_the in ipairs(Workspace:GetDescendants()) do
-        if vat_the:IsA("BasePart") and vat_the.CanCollide then
-            -- Bỏ qua nhân vật của người chơi
-            if not vat_the:IsDescendantOf(nguoi_choi.Character) then
-                -- Bỏ qua các part có tên chứa "Floor" hoặc "Baseplate" hoặc "Spawn"
-                local ten = vat_the.Name:lower()
-                if not (ten:find("floor") or ten:find("baseplate") or ten:find("spawn") or ten:find("ground")) then
-                    -- Nếu part nằm ngang (mặt phẳng) thì bỏ qua (giữ va chạm)
-                    -- Bằng cách kiểm tra kích thước: nếu chiều Y nhỏ hơn nhiều so với X và Z -> là sàn
-                    local kich_thuoc = vat_the.Size
-                    local la_san = (kich_thuoc.Y < kich_thuoc.X * 0.2) and (kich_thuoc.Y < kich_thuoc.Z * 0.2)
-                    
-                    if not la_san then
-                        tuong_da_tat[vat_the] = vat_the.CanCollide
-                        vat_the.CanCollide = false
-                    end
-                end
-            end
-        end
-    end
-end
-
--- HÀM TẮT NOCLIP TƯỜNG (KHÔI PHỤC)
-local function tat_noclip_tuong()
-    for vat_the, trang_thai in pairs(tuong_da_tat) do
-        if vat_the and vat_the.Parent then
-            vat_the.CanCollide = trang_thai
-        end
-    end
-    tuong_da_tat = {}
-end
+-- === ĐÃ XOÁ: bat_noclip_tuong / tat_noclip_tuong ===
 
 local function luu_du_lieu_laser()
     du_lieu_goc_laser = {}
@@ -177,6 +174,7 @@ local function luu_du_lieu_laser()
     end
 end
 
+-- === SỬA: laser mỏng hơn ===
 local function dat_laser_tai_toa_do_moi()
     local so_luong = 0
     for _, vat_the in ipairs(Workspace:GetDescendants()) do
@@ -189,11 +187,11 @@ local function dat_laser_tai_toa_do_moi()
                 }
             end
             vat_the.Shape = Enum.PartType.Block
-            vat_the.Size = Vector3.new(20, 2, 20)
+            vat_the.Size = laser_kich_thuoc_mong -- mỏng hơn
             vat_the.Material = Enum.Material.SmoothPlastic
             vat_the.Transparency = 1
             vat_the.CastShadow = false
-            vat_the.CanCollide = true
+            vat_the.CanCollide = false -- vẫn noclip
             vat_the.Anchored = true
             vat_the.CFrame = huong_moi
             
@@ -217,6 +215,28 @@ local function an_laser()
     end
 end
 
+-- === THÊM MỚI: laser di chuyển lên xuống nhẹ ===
+local function bat_dau_laser_bob()
+    if ket_noi_laser_bob then return end
+    thoi_gian_bob = 0
+    ket_noi_laser_bob = RunService.Heartbeat:Connect(function(dt)
+        if not laser_dang_hien then return end
+        thoi_gian_bob = thoi_gian_bob + dt
+        local do_lech = math.sin(thoi_gian_bob * laser_toc_do) * laser_bien_do
+        local cframe_moi = CFrame.new(toa_do_moi + Vector3.new(0, do_lech, 0))
+        for vat_the, _ in pairs(du_lieu_goc_laser) do
+            if vat_the and vat_the.Parent then
+                vat_the.CFrame = cframe_moi
+            end
+        end
+    end)
+end
+
+local function dung_laser_bob()
+    if ket_noi_laser_bob then ket_noi_laser_bob:Disconnect(); ket_noi_laser_bob = nil end
+end
+-- ============================================
+
 local function bat_dau_kich_hoat_laser()
     if kich_hoat_laser then return end
     kich_hoat_laser = true
@@ -232,41 +252,45 @@ local function bat_dau_kich_hoat_laser()
         
         local khoang_cach = (goc_nhan_vat.Position - toa_do_moi).Magnitude
         
-        -- Nếu đang ở trong khu vực tọa độ mới -> Bật noclip tường
         if khoang_cach <= ban_kinh_kich_hoat then
-            bat_noclip_tuong() -- Bật noclip để bay xuyên tường
+            -- ĐÃ XOÁ noclip tường
             if khoang_cach <= ban_kinh_tam then
-                -- Đang đứng hẳn trong tâm
                 thoi_gian_dung_tam = thoi_gian_dung_tam + 0.2
                 if thoi_gian_dung_tam >= thoi_gian_cho and not laser_dang_hien then
                     laser_dang_hien = true
-                    dat_laser_tai_toa_do_moi() -- Hiện laser
+                    dat_laser_tai_toa_do_moi()
                     for vat_the, _ in pairs(du_lieu_goc_laser) do
                         if vat_the and vat_the.Parent then
                             vat_the.Transparency = 0
                         end
                     end
+                    -- bắt đầu bob khi laser hiện
+                    bat_dau_laser_bob()
                 end
             else
                 thoi_gian_dung_tam = 0
             end
         else
-            -- Ra khỏi khu vực -> Tắt noclip, ẩn laser
-            tat_noclip_tuong()
             thoi_gian_dung_tam = 0
             if laser_dang_hien then
                 laser_dang_hien = false
+                dung_laser_bob()
                 an_laser()
             end
         end
     end)
 end
 
+-- SỬA: thêm logic move on 1 chút nếu laser đã hiện
 local function xu_ly_hoi_sinh(nhan_vat)
     local goc_nhan_vat = nhan_vat:WaitForChild("HumanoidRootPart", 5)
     if not goc_nhan_vat then return end
     so_lan_hoi_sinh = so_lan_hoi_sinh + 1
     nhan_hoi_sinh.Text = "Số Lần Hồi Sinh: " .. so_lan_hoi_sinh
+    da_di_chuyen_them = false
+    
+    -- thử xoá LargeBuilding1 nếu lần đầu chưa thấy
+    xoa_large_building()
     
     task.wait(0.5)
     
@@ -296,6 +320,21 @@ local function xu_ly_hoi_sinh(nhan_vat)
             {CFrame = huong_moi}
         )
         tween:Play()
+        tween.Completed:Wait()
+        
+        if laser_dang_hien and not da_di_chuyen_them then
+            da_di_chuyen_them = true
+            local goc_di_them = nhan_vat:FindFirstChild("HumanoidRootPart")
+            if goc_di_them then
+                local dich_di_them = CFrame.new(toa_do_moi + huong_di_them.Unit * khoang_di_them)
+                local tween_them = TweenService:Create(
+                    goc_di_them,
+                    TweenInfo.new(0.5, Enum.EasingStyle.Linear),
+                    {CFrame = dich_di_them}
+                )
+                tween_them:Play()
+            end
+        end
     end
     
     bat_dau_kich_hoat_laser()
@@ -305,7 +344,7 @@ local function dung_tinh_nang_hoan_toan()
     kich_hoat_laser = false
     if ket_noi_heartbeat then ket_noi_heartbeat:Disconnect(); ket_noi_heartbeat = nil end
     if ket_noi_hoi_sinh then ket_noi_hoi_sinh:Disconnect(); ket_noi_hoi_sinh = nil end
-    tat_noclip_tuong()
+    dung_laser_bob()
     giao_dien:Destroy()
 end
 
@@ -316,9 +355,10 @@ local function tat_tinh_nang_tam_thoi()
     kich_hoat_laser = false
     laser_dang_hien = false
     thoi_gian_dung_tam = 0
+    da_di_chuyen_them = false
     if ket_noi_hoi_sinh then ket_noi_hoi_sinh:Disconnect(); ket_noi_hoi_sinh = nil end
     if ket_noi_heartbeat then ket_noi_heartbeat:Disconnect(); ket_noi_heartbeat = nil end
-    tat_noclip_tuong()
+    dung_laser_bob()
     an_laser()
 end
 
@@ -331,6 +371,7 @@ local function bat_tinh_nang()
     laser_dang_hien = false
     bo_dem_kiem_tra = 0
     thoi_gian_dung_tam = 0
+    da_di_chuyen_them = false
     
     ket_noi_hoi_sinh = nguoi_choi.CharacterAdded:Connect(function(nhan_vat)
         if not dang_bat then return end
