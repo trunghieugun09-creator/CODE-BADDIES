@@ -1,0 +1,91 @@
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local nguoi_choi = Players.LocalPlayer
+
+local toa_do_dich = Vector3.new(46.72500228881836, 6.593186378479004, 333.469970703125)
+local huong_dich = CFrame.new(toa_do_dich)
+local ban_kinh = 50
+local remote_stomp = ReplicatedStorage:FindFirstChild("STOMPEVENT")
+
+local muc_tieu = nil
+local dang_stomp = false
+
+local function tim_muc_tieu()
+    local nhan_vat = nguoi_choi.Character
+    local goc = nhan_vat and nhan_vat:FindFirstChild("HumanoidRootPart")
+    if not goc then return nil end
+    
+    local gan_nhat = nil
+    local khoang_cach_min = ban_kinh
+    
+    for _, nguoi_khac in ipairs(Players:GetPlayers()) do
+        if nguoi_khac ~= nguoi_choi then
+            local char_khac = nguoi_khac.Character
+            local goc_khac = char_khac and char_khac:FindFirstChild("HumanoidRootPart")
+            local mau_khac = char_khac and char_khac:FindFirstChildOfClass("Humanoid")
+            
+            if goc_khac and mau_khac and mau_khac.Health > 0 and mau_khac.Health < 5 then
+                local khoang_cach = (goc_khac.Position - goc.Position).Magnitude
+                if khoang_cach <= khoang_cach_min then
+                    khoang_cach_min = khoang_cach
+                    gan_nhat = nguoi_khac
+                end
+            end
+        end
+    end
+    return gan_nhat
+end
+
+local function xu_ly_hien_tai()
+    local nhan_vat = nguoi_choi.Character
+    local goc = nhan_vat and nhan_vat:FindFirstChild("HumanoidRootPart")
+    local humanoid = nhan_vat and nhan_vat:FindFirstChildOfClass("Humanoid")
+    if not goc or not humanoid then return end
+    
+    local muc_tieu_moi = tim_muc_tieu()
+    
+    if muc_tieu_moi then
+        local char_muc_tieu = muc_tieu_moi.Character
+        local goc_muc_tieu = char_muc_tieu and char_muc_tieu:FindFirstChild("HumanoidRootPart")
+        
+        if goc_muc_tieu then
+            humanoid:MoveTo(goc_muc_tieu.Position)
+            
+            local khoang_cach = (goc_muc_tieu.Position - goc.Position).Magnitude
+            if khoang_cach <= 5 then
+                if remote_stomp and not dang_stomp then
+                    dang_stomp = true
+                    remote_stomp:FireServer()
+                    task.wait(0.5)
+                    dang_stomp = false
+                end
+            end
+        end
+        muc_tieu = muc_tieu_moi
+    else
+        muc_tieu = nil
+        humanoid:MoveTo(goc.Position)
+    end
+end
+
+nguoi_choi.CharacterAdded:Connect(function(nhan_vat)
+    local goc = nhan_vat:WaitForChild("HumanoidRootPart", 5)
+    if not goc then return end
+    
+    task.wait(0.5)
+    
+    local may_do = Workspace:FindFirstChild("MansionDetector", true)
+    if may_do and may_do:IsA("BasePart") then
+        may_do.CFrame = goc.CFrame
+    end
+    
+    goc.CFrame = huong_dich
+end)
+
+RunService.Heartbeat:Connect(function()
+    if nguoi_choi.Character then
+        xu_ly_hien_tai()
+    end
+end)
