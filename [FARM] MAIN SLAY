@@ -4,13 +4,42 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local nguoi_choi = Players.LocalPlayer
 
-local toa_do_dich = Vector3.new(46.72500228881836, 6.593186378479004, 333.469970703125)
+local toa_do_dich = Vector3.new(1.9003, 8.9302, 373.2091)
 local huong_dich = CFrame.new(toa_do_dich)
 local ban_kinh = 50
 local remote_stomp = ReplicatedStorage:FindFirstChild("STOMPEVENT")
 
 local muc_tieu = nil
 local dang_stomp = false
+local tuong_da_tat = {}
+
+local function bat_noclip_tuong()
+    for _, vat_the in ipairs(Workspace:GetDescendants()) do
+        if vat_the:IsA("BasePart") and vat_the.CanCollide then
+            if not vat_the:IsDescendantOf(nguoi_choi.Character) then
+                local ten = vat_the.Name:lower()
+                if not (ten:find("floor") or ten:find("baseplate") or ten:find("spawn") or ten:find("ground")) then
+                    local kich_thuoc = vat_the.Size
+                    local la_san = (kich_thuoc.Y < kich_thuoc.X * 0.2) and (kich_thuoc.Y < kich_thuoc.Z * 0.2)
+                    
+                    if not la_san then
+                        tuong_da_tat[vat_the] = vat_the.CanCollide
+                        vat_the.CanCollide = false
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function tat_noclip_tuong()
+    for vat_the, trang_thai in pairs(tuong_da_tat) do
+        if vat_the and vat_the.Parent then
+            vat_the.CanCollide = trang_thai
+        end
+    end
+    tuong_da_tat = {}
+end
 
 local function tim_muc_tieu()
     local nhan_vat = nguoi_choi.Character
@@ -47,6 +76,8 @@ local function xu_ly_hien_tai()
     local muc_tieu_moi = tim_muc_tieu()
     
     if muc_tieu_moi then
+        bat_noclip_tuong()
+        
         local char_muc_tieu = muc_tieu_moi.Character
         local goc_muc_tieu = char_muc_tieu and char_muc_tieu:FindFirstChild("HumanoidRootPart")
         
@@ -65,6 +96,7 @@ local function xu_ly_hien_tai()
         end
         muc_tieu = muc_tieu_moi
     else
+        tat_noclip_tuong()
         muc_tieu = nil
         humanoid:MoveTo(goc.Position)
     end
