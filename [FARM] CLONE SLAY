@@ -5,7 +5,7 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local nguoi_choi = Players.LocalPlayer
 
-local toa_do_moi = Vector3.new(1.9003, 4.0002, 373.2091) -- TỌA ĐỘ MỚI CỦA BẠN
+local toa_do_moi = Vector3.new(1.9003, 7.5002, 373.2091) -- TỌA ĐỘ MỚI CỦA BẠN
 local huong_moi = CFrame.new(toa_do_moi)
 
 local ban_kinh_kich_hoat = 50
