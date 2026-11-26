@@ -2,16 +2,18 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 local nguoi_choi = Players.LocalPlayer
 
-local toa_do_dich = Vector3.new(1.9003, 8.9302, 373.2091)
-local huong_dich = CFrame.new(toa_do_dich)
-local ban_kinh = 50
+local toa_do_moi = Vector3.new(1.9003, 8.9302, 373.2091)
+local huong_moi = CFrame.new(toa_do_moi)
+local ban_kinh_kich_hoat = 50
 local remote_stomp = ReplicatedStorage:FindFirstChild("STOMPEVENT")
 
 local muc_tieu = nil
 local dang_stomp = false
 local tuong_da_tat = {}
+local da_bay = false
 
 local function bat_noclip_tuong()
     for _, vat_the in ipairs(Workspace:GetDescendants()) do
@@ -21,7 +23,6 @@ local function bat_noclip_tuong()
                 if not (ten:find("floor") or ten:find("baseplate") or ten:find("spawn") or ten:find("ground")) then
                     local kich_thuoc = vat_the.Size
                     local la_san = (kich_thuoc.Y < kich_thuoc.X * 0.2) and (kich_thuoc.Y < kich_thuoc.Z * 0.2)
-                    
                     if not la_san then
                         tuong_da_tat[vat_the] = vat_the.CanCollide
                         vat_the.CanCollide = false
@@ -47,7 +48,7 @@ local function tim_muc_tieu()
     if not goc then return nil end
     
     local gan_nhat = nil
-    local khoang_cach_min = ban_kinh
+    local khoang_cach_min = ban_kinh_kich_hoat
     
     for _, nguoi_khac in ipairs(Players:GetPlayers()) do
         if nguoi_khac ~= nguoi_choi then
@@ -55,7 +56,8 @@ local function tim_muc_tieu()
             local goc_khac = char_khac and char_khac:FindFirstChild("HumanoidRootPart")
             local mau_khac = char_khac and char_khac:FindFirstChildOfClass("Humanoid")
             
-            if goc_khac and mau_khac and mau_khac.Health > 0 and mau_khac.Health < 5 then
+            -- Đã sửa thành dưới 10 máu
+            if goc_khac and mau_khac and mau_khac.Health > 0 and mau_khac.Health < 10 then
                 local khoang_cach = (goc_khac.Position - goc.Position).Magnitude
                 if khoang_cach <= khoang_cach_min then
                     khoang_cach_min = khoang_cach
@@ -73,11 +75,16 @@ local function xu_ly_hien_tai()
     local humanoid = nhan_vat and nhan_vat:FindFirstChildOfClass("Humanoid")
     if not goc or not humanoid then return end
     
+    local khoang_cach_toi_dich = (goc.Position - toa_do_moi).Magnitude
+    if khoang_cach_toi_dich <= ban_kinh_kich_hoat then
+        bat_noclip_tuong()
+    else
+        tat_noclip_tuong()
+    end
+    
     local muc_tieu_moi = tim_muc_tieu()
     
     if muc_tieu_moi then
-        bat_noclip_tuong()
-        
         local char_muc_tieu = muc_tieu_moi.Character
         local goc_muc_tieu = char_muc_tieu and char_muc_tieu:FindFirstChild("HumanoidRootPart")
         
@@ -96,7 +103,6 @@ local function xu_ly_hien_tai()
         end
         muc_tieu = muc_tieu_moi
     else
-        tat_noclip_tuong()
         muc_tieu = nil
         humanoid:MoveTo(goc.Position)
     end
@@ -106,14 +112,34 @@ nguoi_choi.CharacterAdded:Connect(function(nhan_vat)
     local goc = nhan_vat:WaitForChild("HumanoidRootPart", 5)
     if not goc then return end
     
+    da_bay = false
     task.wait(0.5)
     
     local may_do = Workspace:FindFirstChild("MansionDetector", true)
     if may_do and may_do:IsA("BasePart") then
+        for _, con in ipairs(may_do:GetChildren()) do
+            if con:IsA("Weld") or con:IsA("WeldConstraint") or con:IsA("Motor6D") then
+                con:Destroy()
+            end
+        end
+        may_do.Anchored = true
         may_do.CFrame = goc.CFrame
     end
     
-    goc.CFrame = huong_dich
+    task.wait(1.5)
+    
+    local goc_moi = nhan_vat:FindFirstChild("HumanoidRootPart")
+    if goc_moi then
+        local khoang_cach = (huong_moi.Position - goc_moi.Position).Magnitude
+        local thoi_gian_bay = khoang_cach / 100
+        
+        local tween = TweenService:Create(
+            goc_moi,
+            TweenInfo.new(thoi_gian_bay, Enum.EasingStyle.Linear),
+            {CFrame = huong_moi}
+        )
+        tween:Play()
+    end
 end)
 
 RunService.Heartbeat:Connect(function()
