@@ -1,0 +1,359 @@
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local nguoi_choi = Players.LocalPlayer
+
+local toa_do_dich = Vector3.new(46.72500228881836, 6.593186378479004, 333.469970703125)
+local huong_dich = CFrame.new(toa_do_dich)
+local ban_kinh_kich_hoat = 50
+
+local kich_hoat_laser = false
+local laser_dang_hien = false
+local du_lieu_goc_laser = {}
+local bo_dem_kiem_tra = 0
+local dang_bat = false
+local so_lan_hoi_sinh = 0
+local ket_noi_heartbeat = nil
+local ket_noi_hoi_sinh = nil
+
+local giao_dien = Instance.new("ScreenGui")
+giao_dien.Name = "BangDieuKhien"
+giao_dien.ResetOnSpawn = false
+giao_dien.DisplayOrder = 999999
+pcall(function() giao_dien.Parent = game:GetService("CoreGui") end)
+if not giao_dien.Parent then giao_dien.Parent = nguoi_choi:WaitForChild("PlayerGui") end
+
+local khung_chinh = Instance.new("Frame")
+khung_chinh.Size = UDim2.new(0, 260, 0, 160)
+khung_chinh.Position = UDim2.new(0.5, -130, 0.5, -80)
+khung_chinh.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+khung_chinh.BackgroundTransparency = 0.3
+khung_chinh.BorderSizePixel = 0
+khung_chinh.Active = true
+khung_chinh.Parent = giao_dien
+
+local goc_tron = Instance.new("UICorner")
+goc_tron.CornerRadius = UDim.new(0, 12)
+goc_tron.Parent = khung_chinh
+
+local vien = Instance.new("UIStroke")
+vien.Color = Color3.fromRGB(200, 200, 255)
+vien.Thickness = 2
+vien.Transparency = 0.2
+vien.Parent = khung_chinh
+
+local thanh_tieu_de = Instance.new("Frame")
+thanh_tieu_de.Size = UDim2.new(1, 0, 0, 35)
+thanh_tieu_de.BackgroundColor3 = Color3.fromRGB(70, 70, 100)
+thanh_tieu_de.BackgroundTransparency = 0.3
+thanh_tieu_de.BorderSizePixel = 0
+thanh_tieu_de.Parent = khung_chinh
+
+local goc_tieu_de = Instance.new("UICorner")
+goc_tieu_de.CornerRadius = UDim.new(0, 12)
+goc_tieu_de.Parent = thanh_tieu_de
+
+local tieu_de = Instance.new("TextLabel")
+tieu_de.Size = UDim2.new(1, -40, 1, 0)
+tieu_de.Position = UDim2.new(0, 12, 0, 0)
+tieu_de.BackgroundTransparency = 1
+tieu_de.Text = "Bảng Điều Khiển"
+tieu_de.TextColor3 = Color3.fromRGB(220, 220, 255)
+tieu_de.Font = Enum.Font.GothamBold
+tieu_de.TextSize = 14
+tieu_de.TextXAlignment = Enum.TextXAlignment.Left
+tieu_de.Parent = thanh_tieu_de
+
+local nut_x = Instance.new("TextButton")
+nut_x.Size = UDim2.new(0, 26, 0, 26)
+nut_x.Position = UDim2.new(1, -32, 0.5, -13)
+nut_x.BackgroundColor3 = Color3.fromRGB(180, 50, 60)
+nut_x.BackgroundTransparency = 0.3
+nut_x.Text = "X"
+nut_x.TextColor3 = Color3.new(1, 1, 1)
+nut_x.Font = Enum.Font.GothamBold
+nut_x.TextSize = 14
+nut_x.Parent = thanh_tieu_de
+Instance.new("UICorner", nut_x).CornerRadius = UDim.new(0, 6)
+
+local khung_noi_dung = Instance.new("Frame")
+khung_noi_dung.Size = UDim2.new(1, -20, 1, -50)
+khung_noi_dung.Position = UDim2.new(0, 10, 0, 42)
+khung_noi_dung.BackgroundTransparency = 1
+khung_noi_dung.Parent = khung_chinh
+
+local nhan_hoi_sinh = Instance.new("TextLabel")
+nhan_hoi_sinh.Size = UDim2.new(1, 0, 0, 30)
+nhan_hoi_sinh.BackgroundTransparency = 1
+nhan_hoi_sinh.Text = "Số Lần Hồi Sinh: 0"
+nhan_hoi_sinh.TextColor3 = Color3.fromRGB(200, 200, 255)
+nhan_hoi_sinh.Font = Enum.Font.GothamSemibold
+nhan_hoi_sinh.TextSize = 13
+nhan_hoi_sinh.TextXAlignment = Enum.TextXAlignment.Left
+nhan_hoi_sinh.Parent = khung_noi_dung
+
+local nut_bat_tat = Instance.new("TextButton")
+nut_bat_tat.Size = UDim2.new(1, 0, 0, 40)
+nut_bat_tat.Position = UDim2.new(0, 0, 1, -40)
+nut_bat_tat.BackgroundColor3 = Color3.fromRGB(40, 140, 90)
+nut_bat_tat.BackgroundTransparency = 0.3
+nut_bat_tat.Text = "Bắt Đầu"
+nut_bat_tat.TextColor3 = Color3.new(1, 1, 1)
+nut_bat_tat.Font = Enum.Font.GothamBold
+nut_bat_tat.TextSize = 14
+nut_bat_tat.Parent = khung_noi_dung
+Instance.new("UICorner", nut_bat_tat).CornerRadius = UDim.new(0, 8)
+
+local dang_keo = false
+local vi_tri_chuot_bat_dau = nil
+local vi_tri_khung_bat_dau = nil
+
+thanh_tieu_de.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dang_keo = true
+        vi_tri_chuot_bat_dau = input.Position
+        vi_tri_khung_bat_dau = khung_chinh.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dang_keo and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local chenh_lech = input.Position - vi_tri_chuot_bat_dau
+        khung_chinh.Position = UDim2.new(
+            vi_tri_khung_bat_dau.X.Scale, vi_tri_khung_bat_dau.X.Offset + chenh_lech.X,
+            vi_tri_khung_bat_dau.Y.Scale, vi_tri_khung_bat_dau.Y.Offset + chenh_lech.Y
+        )
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dang_keo = false
+    end
+end)
+
+local function luu_du_lieu_laser()
+    du_lieu_goc_laser = {}
+    for _, vat_the in ipairs(Workspace:GetDescendants()) do
+        if vat_the:IsA("BasePart") and vat_the.Name:lower() == "laser" then
+            du_lieu_goc_laser[vat_the] = {
+                huong = vat_the.CFrame,
+                hinh_dang = vat_the.Shape,
+                kich_thuoc = vat_the.Size,
+                chat_lieu = vat_the.Material,
+                do_trong_suot = vat_the.Transparency
+            }
+            vat_the.Transparency = 1
+            vat_the.CanCollide = false
+        end
+    end
+end
+
+local function hien_laser_tai_dich()
+    local so_luong = 0
+    for _, vat_the in ipairs(Workspace:GetDescendants()) do
+        if vat_the:IsA("BasePart") and vat_the.Name:lower() == "laser" then
+            if not du_lieu_goc_laser[vat_the] then
+                du_lieu_goc_laser[vat_the] = {
+                    huong = vat_the.CFrame,
+                    hinh_dang = vat_the.Shape,
+                    kich_thuoc = vat_the.Size,
+                    chat_lieu = vat_the.Material,
+                    do_trong_suot = vat_the.Transparency
+                }
+            end
+            vat_the.Shape = Enum.PartType.Block
+            vat_the.Size = Vector3.new(20, 2, 20)
+            vat_the.Material = Enum.Material.SmoothPlastic
+            vat_the.CFrame = huong_dich
+            vat_the.Transparency = 1
+            vat_the.CastShadow = false
+            vat_the.CanCollide = true
+            vat_the.Anchored = true
+            for _, hieu_ung in ipairs(vat_the:GetChildren()) do
+                if hieu_ung:IsA("PointLight") or hieu_ung:IsA("SpotLight") or hieu_ung:IsA("SurfaceLight") or hieu_ung:IsA("ParticleEmitter") or hieu_ung:IsA("Beam") or hieu_ung:IsA("Trail") then
+                    hieu_ung:Destroy()
+                end
+            end
+            so_luong = so_luong + 1
+        end
+    end
+    return so_luong
+end
+
+local function an_laser()
+    for vat_the, du_lieu in pairs(du_lieu_goc_laser) do
+        if vat_the and vat_the.Parent then
+            vat_the.CFrame = du_lieu.huong
+            vat_the.Shape = du_lieu.hinh_dang
+            vat_the.Size = du_lieu.kich_thuoc
+            vat_the.Material = du_lieu.chat_lieu
+            vat_the.Transparency = 1
+            vat_the.CanCollide = false
+        end
+    end
+end
+
+local function bat_dau_kich_hoat_laser()
+    if kich_hoat_laser then return end
+    kich_hoat_laser = true
+    ket_noi_heartbeat = RunService.Heartbeat:Connect(function(thoi_gian_troi_qua)
+        if not kich_hoat_laser then return end
+        local nhan_vat = nguoi_choi.Character
+        local goc_nhan_vat = nhan_vat and nhan_vat:FindFirstChild("HumanoidRootPart")
+        if not goc_nhan_vat then return end
+        bo_dem_kiem_tra = bo_dem_kiem_tra + thoi_gian_troi_qua
+        if bo_dem_kiem_tra < 0.2 then return end
+        bo_dem_kiem_tra = 0
+        local khoang_cach = (goc_nhan_vat.Position - toa_do_dich).Magnitude
+        if khoang_cach <= ban_kinh_kich_hoat then
+            if not laser_dang_hien then
+                laser_dang_hien = true
+                task.wait(1)
+                local goc_moi = nguoi_choi.Character and nguoi_choi.Character:FindFirstChild("HumanoidRootPart")
+                if goc_moi and (goc_moi.Position - toa_do_dich).Magnitude <= ban_kinh_kich_hoat then
+                    hien_laser_tai_dich()
+                else
+                    laser_dang_hien = false
+                end
+            end
+        else
+            if laser_dang_hien then
+                laser_dang_hien = false
+                an_laser()
+            end
+        end
+    end)
+end
+
+local function xu_ly_hoi_sinh(nhan_vat)
+    local goc_nhan_vat = nhan_vat:WaitForChild("HumanoidRootPart", 5)
+    if not goc_nhan_vat then return end
+    so_lan_hoi_sinh = so_lan_hoi_sinh + 1
+    nhan_hoi_sinh.Text = "Số Lần Hồi Sinh: " .. so_lan_hoi_sinh
+    task.wait(0.5)
+    local may_do = Workspace:FindFirstChild("MansionDetector", true)
+    if may_do and may_do:IsA("BasePart") then
+        may_do.CFrame = goc_nhan_vat.CFrame
+    end
+    goc_nhan_vat.CFrame = huong_dich
+    luu_du_lieu_laser()
+    bat_dau_kich_hoat_laser()
+end
+
+local function dung_tinh_nang_hoan_toan()
+    kich_hoat_laser = false
+    if ket_noi_heartbeat then
+        ket_noi_heartbeat:Disconnect()
+        ket_noi_heartbeat = nil
+    end
+    if ket_noi_hoi_sinh then
+        ket_noi_hoi_sinh:Disconnect()
+        ket_noi_hoi_sinh = nil
+    end
+    giao_dien:Destroy()
+end
+
+local function tat_tinh_nang_tam_thoi()
+    dang_bat = false
+    nut_bat_tat.Text = "Bắt Đầu"
+    nut_bat_tat.BackgroundColor3 = Color3.fromRGB(40, 140, 90)
+    kich_hoat_laser = false
+    laser_dang_hien = false
+    if ket_noi_hoi_sinh then
+        ket_noi_hoi_sinh:Disconnect()
+        ket_noi_hoi_sinh = nil
+    end
+    if ket_noi_heartbeat then
+        ket_noi_heartbeat:Disconnect()
+        ket_noi_heartbeat = nil
+    end
+    an_laser()
+end
+
+local function bat_tinh_nang()
+    dang_bat = true
+    nut_bat_tat.Text = "Tắt"
+    nut_bat_tat.BackgroundColor3 = Color3.fromRGB(180, 50, 60)
+    
+    kich_hoat_laser = false
+    laser_dang_hien = false
+    bo_dem_kiem_tra = 0
+    luu_du_lieu_laser()
+    
+    ket_noi_hoi_sinh = nguoi_choi.CharacterAdded:Connect(function(nhan_vat)
+        if not dang_bat then return end
+        xu_ly_hoi_sinh(nhan_vat)
+    end)
+    
+    if nguoi_choi.Character then
+        local goc_hien_tai = nguoi_choi.Character:FindFirstChild("HumanoidRootPart")
+        if goc_hien_tai then
+            local khoang_cach = (goc_hien_tai.Position - toa_do_dich).Magnitude
+            if khoang_cach <= ban_kinh_kich_hoat then
+                bat_dau_kich_hoat_laser()
+            end
+        end
+    end
+end
+
+nut_bat_tat.MouseButton1Click:Connect(function()
+    if dang_bat then
+        tat_tinh_nang_tam_thoi()
+    else
+        bat_tinh_nang()
+    end
+end)
+
+nut_x.MouseButton1Click:Connect(function()
+    local hop_thoai = Instance.new("Frame")
+    hop_thoai.Size = UDim2.new(0, 240, 0, 120)
+    hop_thoai.Position = UDim2.new(0.5, -120, 0.5, -60)
+    hop_thoai.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    hop_thoai.BackgroundTransparency = 0.2
+    hop_thoai.BorderSizePixel = 0
+    hop_thoai.Parent = giao_dien
+    Instance.new("UICorner", hop_thoai).CornerRadius = UDim.new(0, 10)
+
+    local chu_hoi = Instance.new("TextLabel")
+    chu_hoi.Size = UDim2.new(1, -20, 0, 40)
+    chu_hoi.Position = UDim2.new(0, 10, 0, 10)
+    chu_hoi.BackgroundTransparency = 1
+    chu_hoi.Text = "Bạn Có Muốn Xóa Không?"
+    chu_hoi.TextColor3 = Color3.fromRGB(255, 255, 255)
+    chu_hoi.Font = Enum.Font.GothamBold
+    chu_hoi.TextSize = 14
+    chu_hoi.Parent = hop_thoai
+
+    local nut_co = Instance.new("TextButton")
+    nut_co.Size = UDim2.new(0, 90, 0, 35)
+    nut_co.Position = UDim2.new(0, 20, 1, -50)
+    nut_co.BackgroundColor3 = Color3.fromRGB(180, 50, 60)
+    nut_co.Text = "Có"
+    nut_co.TextColor3 = Color3.new(1, 1, 1)
+    nut_co.Font = Enum.Font.GothamBold
+    nut_co.TextSize = 14
+    nut_co.Parent = hop_thoai
+    Instance.new("UICorner", nut_co).CornerRadius = UDim.new(0, 6)
+
+    local nut_khong = Instance.new("TextButton")
+    nut_khong.Size = UDim2.new(0, 90, 0, 35)
+    nut_khong.Position = UDim2.new(1, -110, 1, -50)
+    nut_khong.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
+    nut_khong.Text = "Không"
+    nut_khong.TextColor3 = Color3.new(1, 1, 1)
+    nut_khong.Font = Enum.Font.GothamBold
+    nut_khong.TextSize = 14
+    nut_khong.Parent = hop_thoai
+    Instance.new("UICorner", nut_khong).CornerRadius = UDim.new(0, 6)
+
+    nut_co.MouseButton1Click:Connect(function()
+        hop_thoai:Destroy()
+        dung_tinh_nang_hoan_toan()
+    end)
+
+    nut_khong.MouseButton1Click:Connect(function()
+        hop_thoai:Destroy()
+    end)
+end)
