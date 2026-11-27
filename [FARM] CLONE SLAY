@@ -24,7 +24,7 @@ local thoi_gian_bob = 0
 
 local ban_kinh_kich_hoat = 50
 local ban_kinh_tam = 2
-local thoi_gian_cho = 1.5
+local thoi_gian_cho = 1.2
 
 local kich_hoat_laser = false
 local laser_dang_hien = false
