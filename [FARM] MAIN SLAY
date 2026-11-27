@@ -48,7 +48,7 @@ local function tim_muc_tieu()
     if not goc then return nil end
     
     local gan_nhat = nil
-    local khoang_cach_min = ban_kinh_kich_hoat
+    local khoang_cach_min = math.huge  -- lấy mục tiêu gần tọa độ gốc nhất
     
     for _, nguoi_khac in ipairs(Players:GetPlayers()) do
         if nguoi_khac ~= nguoi_choi then
@@ -56,12 +56,15 @@ local function tim_muc_tieu()
             local goc_khac = char_khac and char_khac:FindFirstChild("HumanoidRootPart")
             local mau_khac = char_khac and char_khac:FindFirstChildOfClass("Humanoid")
             
-            -- Đã sửa thành dưới 10 máu
+            -- Điều kiện: còn sống, máu < 10
             if goc_khac and mau_khac and mau_khac.Health > 0 and mau_khac.Health < 10 then
-                local khoang_cach = (goc_khac.Position - goc.Position).Magnitude
-                if khoang_cach <= khoang_cach_min then
-                    khoang_cach_min = khoang_cach
-                    gan_nhat = nguoi_khac
+                -- ĐO KHOẢNG CÁCH TỪ MỤC TIÊU TỚI TỌA ĐỘ GỐC
+                local khoang_cach_toi_goc = (goc_khac.Position - toa_do_moi).Magnitude
+                if khoang_cach_toi_goc <= ban_kinh_kich_hoat then
+                    if khoang_cach_toi_goc < khoang_cach_min then
+                        khoang_cach_min = khoang_cach_toi_goc
+                        gan_nhat = nguoi_khac
+                    end
                 end
             end
         end
@@ -75,6 +78,7 @@ local function xu_ly_hien_tai()
     local humanoid = nhan_vat and nhan_vat:FindFirstChildOfClass("Humanoid")
     if not goc or not humanoid then return end
     
+    -- Bật noclip nếu BẠN ở trong bán kính 150 quanh tọa độ gốc
     local khoang_cach_toi_dich = (goc.Position - toa_do_moi).Magnitude
     if khoang_cach_toi_dich <= ban_kinh_kich_hoat then
         bat_noclip_tuong()
