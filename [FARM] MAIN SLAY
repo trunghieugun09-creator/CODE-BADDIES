@@ -7,7 +7,7 @@ local nguoi_choi = Players.LocalPlayer
 
 local toa_do_moi = Vector3.new(1.9003, 8.9302, 373.2091)
 local huong_moi = CFrame.new(toa_do_moi)
-local ban_kinh_kich_hoat = 50
+local ban_kinh_kich_hoat = 150
 local remote_stomp = ReplicatedStorage:FindFirstChild("STOMPEVENT")
 
 local muc_tieu = nil
