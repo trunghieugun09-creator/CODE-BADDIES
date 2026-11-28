@@ -4,7 +4,6 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
-local UserInputService = game:GetService("UserInputService")
 local nguoi_choi = Players.LocalPlayer
 
 local toa_do_moi = Vector3.new(1.9003, 8.9302, 373.2091)
@@ -19,32 +18,22 @@ local da_bay = false
 
 local webhook_url = ""
 local tong_slay_lan_truoc = 0
-local lan_bao_cuoi = 0
+local thoi_diem_slay_cuoi = 0
+local slay_luc_bat_dau = 0
+local thoi_diem_bat_dau = 0
+local WebhookMessageID = nil
 
 local dang_chay = false
 local ket_noi_heartbeat = nil
 local ket_noi_baocao = nil
 local ket_noi_hoisinh = nil
 
-local function gui_webhook_embed(embed)
-    if webhook_url == "" then return false, "webhook rỗng" end
-    local payload = { username = "Turkey Stomp Monitor", embeds = { embed } }
-    local body = HttpService:JSONEncode(payload)
-    if request then
-        local ok, res = pcall(function()
-            return request({
-                Url = webhook_url,
-                Method = "POST",
-                Headers = { ["Content-Type"] = "application/json" },
-                Body = body
-            })
-        end)
-        if ok then return true else warn("[Webhook] request lỗi:", res) end
-    end
-    local ok, err = pcall(function()
-        HttpService:PostAsync(webhook_url, body, Enum.HttpContentType.ApplicationJson)
-    end)
-    if ok then return true else warn("[Webhook] PostAsync lỗi:", err); return false, err end
+local function getRequestFunction()
+    if typeof(request) == "function" then return request end
+    if typeof(http_request) == "function" then return http_request end
+    if syn and typeof(syn.request) == "function" then return syn.request end
+    if http and typeof(http.request) == "function" then return http.request end
+    return nil
 end
 
 local function lay_tong_slay()
@@ -60,8 +49,155 @@ local function ten_hien_thi()
     return nguoi_choi.DisplayName .. " (" .. nguoi_choi.Name .. ")"
 end
 
-local function thoi_gian_hien_tai()
-    return os.date("%H:%M:%S")
+local function formatTime(seconds)
+    seconds = tonumber(seconds) or 0
+    local h = math.floor(seconds / 3600)
+    local m = math.floor((seconds % 3600) / 60)
+    local s = math.floor(seconds % 60)
+    return string.format("%02d:%02d:%02d", h, m, s)
+end
+
+local function getCurrentFarmTime()
+    if thoi_diem_bat_dau > 0 then
+        return os.time() - thoi_diem_bat_dau
+    end
+    return 0
+end
+
+local function createProgressEmbed(status)
+    local tong_slay = lay_tong_slay()
+    local slay_phien = tong_slay - slay_luc_bat_dau
+    local thoi_gian = getCurrentFarmTime()
+
+    local dang_hoat_dong = true
+    local thoi_gian_khong_slay = os.time() - thoi_diem_slay_cuoi
+    if thoi_gian_khong_slay >= 120 then
+        dang_hoat_dong = false
+    end
+
+    if tong_slay > tong_slay_lan_truoc then
+        thoi_diem_slay_cuoi = os.time()
+        tong_slay_lan_truoc = tong_slay
+    end
+
+    local trang_thai, mau
+    if status then
+        trang_thai = status
+        mau = 5763719
+    elseif dang_hoat_dong then
+        trang_thai = "✅ Bình thường"
+        mau = 5763719
+    else
+        trang_thai = "❌ Clone đã out (2 phút không tăng slay)"
+        mau = 15548997
+    end
+
+    return {
+        ["title"] = "🦃 THEO DÕI STOMP",
+        ["description"] =
+            "**Account:** `" .. ten_hien_thi() .. "`\n\n" ..
+            "⚔️ **Slay:** `" .. tostring(slay_phien) .. "`\n" ..
+            "🏆 **Tổng slay:** `" .. tostring(tong_slay) .. "`\n\n" ..
+            "📊 **Trạng thái:** `" .. trang_thai .. "`",
+        ["color"] = mau,
+        ["timestamp"] = DateTime.now():ToIsoDate(),
+        ["footer"] = { ["text"] = "Turkey Monitor | " .. formatTime(thoi_gian) }
+    }
+end
+
+local function createWebhookMessage(status)
+    if webhook_url == "" then return false, "WebhookURL trống" end
+    local requestFunc = getRequestFunction()
+    if not requestFunc then return false, "Không tìm thấy request function" end
+
+    local data = {
+        ["username"] = "Turkey_Monitor🔔",
+        ["embeds"] = { createProgressEmbed(status or "Đang chạy...") }
+    }
+
+    local encodeSuccess, body = pcall(function()
+        return HttpService:JSONEncode(data)
+    end)
+    if not encodeSuccess then return false, tostring(body) end
+
+    local url = webhook_url
+    if string.find(url, "?") then
+        url = url .. "&wait=true"
+    else
+        url = url .. "?wait=true"
+    end
+
+    local success, response = pcall(function()
+        return requestFunc({
+            Url = url,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = body
+        })
+    end)
+
+    if not success then
+        warn("Webhook create lỗi:", response)
+        return false, tostring(response)
+    end
+    if not response then return false, "Không có response" end
+
+    local statusCode = tonumber(response.StatusCode or response.Status)
+    if statusCode and statusCode >= 400 then
+        warn("Discord HTTP Error:", statusCode, response.Body or "")
+        return false, tostring(statusCode)
+    end
+
+    local decodeSuccess, messageData = pcall(function()
+        return HttpService:JSONDecode(response.Body)
+    end)
+    if not decodeSuccess then return false, "Không đọc được Discord response" end
+
+    WebhookMessageID = messageData.id
+    if not WebhookMessageID then return false, "Không lấy được Message ID" end
+
+    return true
+end
+
+local function editWebhookMessage(status)
+    if webhook_url == "" then return false end
+    if not WebhookMessageID then return false end
+
+    local requestFunc = getRequestFunction()
+    if not requestFunc then return false end
+
+    local data = {
+        ["embeds"] = { createProgressEmbed(status) }
+    }
+
+    local encodeSuccess, body = pcall(function()
+        return HttpService:JSONEncode(data)
+    end)
+    if not encodeSuccess then return false end
+
+    local editURL = webhook_url .. "/messages/" .. tostring(WebhookMessageID)
+
+    local success, response = pcall(function()
+        return requestFunc({
+            Url = editURL,
+            Method = "PATCH",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = body
+        })
+    end)
+
+    if not success then
+        warn("Webhook edit lỗi:", response)
+        return false
+    end
+
+    local statusCode = tonumber(response.StatusCode or response.Status)
+    if statusCode and statusCode >= 400 then
+        warn("Discord edit error:", statusCode, response.Body or "")
+        return false
+    end
+
+    return true
 end
 
 local function bat_noclip_tuong()
@@ -180,38 +316,26 @@ end
 
 local function bat_dau_bao_cao()
     if ket_noi_baocao then task.cancel(ket_noi_baocao); ket_noi_baocao = nil end
-    tong_slay_lan_truoc = lay_tong_slay()
-    lan_bao_cuoi = tick()
+
+    slay_luc_bat_dau = lay_tong_slay()
+    tong_slay_lan_truoc = slay_luc_bat_dau
+    thoi_diem_slay_cuoi = os.time()
+    thoi_diem_bat_dau = os.time()
+    WebhookMessageID = nil
+
     ket_noi_baocao = task.spawn(function()
         while dang_chay do
-            task.wait(5)
+            task.wait(1)
             if not dang_chay then break end
             if webhook_url == "" then continue end
-            if tick() - lan_bao_cuoi >= 120 then
-                local tong_slay_hien_tai = lay_tong_slay()
-                local slay_2phut = tong_slay_hien_tai - tong_slay_lan_truoc
-                local trang_thai, mau
-                if slay_2phut > 0 then
-                    trang_thai = "✅ Bình thường"
-                    mau = 5763719
-                else
-                    trang_thai = "❌ Clone đã out (2 phút không tăng slay)"
-                    mau = 15548997
-                end
-                gui_webhook_embed({
-                    ["title"] = "Stomp Report",
-                    ["color"] = mau,
-                    ["fields"] = {
-                        { name = "Người dùng", value = ten_hien_thi(), inline = false },
-                        { name = "Slay (2 phút)", value = tostring(slay_2phut), inline = false },
-                        { name = "Tổng slay", value = tostring(tong_slay_hien_tai), inline = false },
-                        { name = "Thời gian", value = thoi_gian_hien_tai(), inline = false },
-                        { name = "Trạng thái", value = trang_thai, inline = false },
-                    },
-                    ["footer"] = { text = "Turkey Monitor - " .. os.date("%Y-%m-%d") }
-                })
-                tong_slay_lan_truoc = tong_slay_hien_tai
-                lan_bao_cuoi = tick()
+
+            if not WebhookMessageID then
+                local ok, err = createWebhookMessage("Đang chạy...")
+                if not ok then warn("Tạo webhook thất bại:", err) end
+            else
+                pcall(function()
+                    editWebhookMessage(nil)
+                end)
             end
         end
     end)
@@ -234,6 +358,11 @@ local function dung()
     if ket_noi_baocao then task.cancel(ket_noi_baocao); ket_noi_baocao = nil end
     tat_noclip_tuong()
     muc_tieu = nil
+    if webhook_url ~= "" and WebhookMessageID then
+        task.spawn(function()
+            editWebhookMessage("🛑 Đã dừng")
+        end)
+    end
 end
 
 local giao_dien = Instance.new("ScreenGui")
@@ -249,55 +378,19 @@ khung.Position = UDim2.new(0.5, -150, 0.5, -105)
 khung.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
 khung.BackgroundTransparency = 0.2
 khung.BorderSizePixel = 0
-khung.Active = true
-khung.ClipsDescendants = true
 Instance.new("UICorner", khung).CornerRadius = UDim.new(0, 10)
 
-local thanh_td = Instance.new("Frame", khung)
-thanh_td.Name = "ThanhTieuDe"
-thanh_td.Size = UDim2.new(1, 0, 0, 30)
-thanh_td.BackgroundTransparency = 1
-thanh_td.Active = true
-
-local tieu_de = Instance.new("TextLabel", thanh_td)
-tieu_de.Size = UDim2.new(1, -70, 1, 0)
-tieu_de.Position = UDim2.new(0, 10, 0, 0)
+local tieu_de = Instance.new("TextLabel", khung)
+tieu_de.Size = UDim2.new(1, 0, 0, 30)
 tieu_de.BackgroundTransparency = 1
 tieu_de.Text = "Stomp + Webhook"
 tieu_de.TextColor3 = Color3.fromRGB(220, 220, 255)
 tieu_de.Font = Enum.Font.GothamBold
 tieu_de.TextSize = 14
-tieu_de.TextXAlignment = Enum.TextXAlignment.Left
 
-local nut_thu_nho = Instance.new("TextButton", thanh_td)
-nut_thu_nho.Size = UDim2.new(0, 24, 0, 24)
-nut_thu_nho.Position = UDim2.new(1, -56, 0, 3)
-nut_thu_nho.BackgroundColor3 = Color3.fromRGB(70, 90, 140)
-nut_thu_nho.Text = "—"
-nut_thu_nho.TextColor3 = Color3.new(1, 1, 1)
-nut_thu_nho.Font = Enum.Font.GothamBold
-nut_thu_nho.TextSize = 14
-Instance.new("UICorner", nut_thu_nho).CornerRadius = UDim.new(0, 6)
-
-local nut_x = Instance.new("TextButton", thanh_td)
-nut_x.Size = UDim2.new(0, 24, 0, 24)
-nut_x.Position = UDim2.new(1, -28, 0, 3)
-nut_x.BackgroundColor3 = Color3.fromRGB(180, 50, 60)
-nut_x.Text = "X"
-nut_x.TextColor3 = Color3.new(1, 1, 1)
-nut_x.Font = Enum.Font.GothamBold
-nut_x.TextSize = 12
-Instance.new("UICorner", nut_x).CornerRadius = UDim.new(0, 6)
-
-local than_noi_dung = Instance.new("Frame", khung)
-than_noi_dung.Name = "ThanNoiDung"
-than_noi_dung.Size = UDim2.new(1, 0, 1, -30)
-than_noi_dung.Position = UDim2.new(0, 0, 0, 30)
-than_noi_dung.BackgroundTransparency = 1
-
-local o_nhap = Instance.new("TextBox", than_noi_dung)
+local o_nhap = Instance.new("TextBox", khung)
 o_nhap.Size = UDim2.new(1, -20, 0, 35)
-o_nhap.Position = UDim2.new(0, 10, 0, 5)
+o_nhap.Position = UDim2.new(0, 10, 0, 35)
 o_nhap.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
 o_nhap.Text = ""
 o_nhap.PlaceholderText = "Dán webhook URL vào đây..."
@@ -308,9 +401,9 @@ o_nhap.ClearTextOnFocus = false
 o_nhap.TextXAlignment = Enum.TextXAlignment.Left
 Instance.new("UICorner", o_nhap).CornerRadius = UDim.new(0, 6)
 
-local nut_luu = Instance.new("TextButton", than_noi_dung)
+local nut_luu = Instance.new("TextButton", khung)
 nut_luu.Size = UDim2.new(1, -20, 0, 30)
-nut_luu.Position = UDim2.new(0, 10, 0, 45)
+nut_luu.Position = UDim2.new(0, 10, 0, 75)
 nut_luu.BackgroundColor3 = Color3.fromRGB(60, 80, 140)
 nut_luu.Text = "Lưu Webhook"
 nut_luu.TextColor3 = Color3.new(1, 1, 1)
@@ -318,18 +411,18 @@ nut_luu.Font = Enum.Font.GothamBold
 nut_luu.TextSize = 13
 Instance.new("UICorner", nut_luu).CornerRadius = UDim.new(0, 6)
 
-local nhan_trang_thai = Instance.new("TextLabel", than_noi_dung)
+local nhan_trang_thai = Instance.new("TextLabel", khung)
 nhan_trang_thai.Size = UDim2.new(1, -20, 0, 18)
-nhan_trang_thai.Position = UDim2.new(0, 10, 0, 78)
+nhan_trang_thai.Position = UDim2.new(0, 10, 0, 108)
 nhan_trang_thai.BackgroundTransparency = 1
 nhan_trang_thai.Text = ""
 nhan_trang_thai.TextColor3 = Color3.fromRGB(180, 255, 180)
 nhan_trang_thai.Font = Enum.Font.Gotham
 nhan_trang_thai.TextSize = 11
 
-local nut_start = Instance.new("TextButton", than_noi_dung)
+local nut_start = Instance.new("TextButton", khung)
 nut_start.Size = UDim2.new(1, -20, 0, 40)
-nut_start.Position = UDim2.new(0, 10, 0, 100)
+nut_start.Position = UDim2.new(0, 10, 0, 130)
 nut_start.BackgroundColor3 = Color3.fromRGB(40, 140, 90)
 nut_start.Text = "START"
 nut_start.TextColor3 = Color3.new(1, 1, 1)
@@ -337,66 +430,28 @@ nut_start.Font = Enum.Font.GothamBold
 nut_start.TextSize = 15
 Instance.new("UICorner", nut_start).CornerRadius = UDim.new(0, 8)
 
-local dang_keo = false
-local vi_tri_chuot_bat_dau = nil
-local vi_tri_khung_bat_dau = nil
-
-thanh_td.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dang_keo = true
-        vi_tri_chuot_bat_dau = input.Position
-        vi_tri_khung_bat_dau = khung.Position
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if dang_keo and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local chenh_lech = input.Position - vi_tri_chuot_bat_dau
-        khung.Position = UDim2.new(
-            vi_tri_khung_bat_dau.X.Scale, vi_tri_khung_bat_dau.X.Offset + chenh_lech.X,
-            vi_tri_khung_bat_dau.Y.Scale, vi_tri_khung_bat_dau.Y.Offset + chenh_lech.Y
-        )
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dang_keo = false
-    end
-end)
-
-local dang_thu_nho = false
-nut_thu_nho.MouseButton1Click:Connect(function()
-    dang_thu_nho = not dang_thu_nho
-    if dang_thu_nho then
-        than_noi_dung.Visible = false
-        khung.Size = UDim2.new(0, 300, 0, 30)
-        nut_thu_nho.Text = "+"
-    else
-        than_noi_dung.Visible = true
-        khung.Size = UDim2.new(0, 300, 0, 210)
-        nut_thu_nho.Text = "—"
-    end
-end)
-
 nut_luu.MouseButton1Click:Connect(function()
-    webhook_url = o_nhap.Text
-    if webhook_url == "" then
+    local url = o_nhap.Text
+    url = string.gsub(url, "^%s+", "")
+    url = string.gsub(url, "%s+$", "")
+
+    if url == "" then
+        webhook_url = ""
+        WebhookMessageID = nil
         nhan_trang_thai.Text = "❌ Chưa nhập webhook"
         nhan_trang_thai.TextColor3 = Color3.fromRGB(255, 150, 150)
         return
     end
+
+    webhook_url = url
+    WebhookMessageID = nil
+
     nhan_trang_thai.Text = "Đang gửi test..."
     nhan_trang_thai.TextColor3 = Color3.fromRGB(255, 220, 150)
-    local ok = gui_webhook_embed({
-        ["title"] = "Kết nối thành công",
-        ["color"] = 5763719,
-        ["fields"] = {
-            { name = "Người dùng", value = ten_hien_thi(), inline = false },
-            { name = "Thời gian", value = thoi_gian_hien_tai(), inline = false },
-        }
-    })
-    if ok then
+
+    local sent, err = createWebhookMessage("🟢 Đã kết nối")
+
+    if sent then
         nhan_trang_thai.Text = "✅ Đã gửi test - check Discord"
         nhan_trang_thai.TextColor3 = Color3.fromRGB(180, 255, 180)
         nut_luu.Text = "Đã Lưu!"
@@ -405,6 +460,7 @@ nut_luu.MouseButton1Click:Connect(function()
     else
         nhan_trang_thai.Text = "❌ Lỗi - xem Output"
         nhan_trang_thai.TextColor3 = Color3.fromRGB(255, 150, 150)
+        warn("Webhook FAILED:", err)
     end
 end)
 
@@ -425,6 +481,15 @@ nut_start.MouseButton1Click:Connect(function()
     end
 end)
 
+local nut_x = Instance.new("TextButton", khung)
+nut_x.Size = UDim2.new(0, 24, 0, 24)
+nut_x.Position = UDim2.new(1, -28, 0, 4)
+nut_x.BackgroundColor3 = Color3.fromRGB(180, 50, 60)
+nut_x.Text = "X"
+nut_x.TextColor3 = Color3.new(1, 1, 1)
+nut_x.Font = Enum.Font.GothamBold
+nut_x.TextSize = 12
+Instance.new("UICorner", nut_x).CornerRadius = UDim.new(0, 6)
 nut_x.MouseButton1Click:Connect(function()
     if dang_chay then dung() end
     giao_dien:Destroy()
