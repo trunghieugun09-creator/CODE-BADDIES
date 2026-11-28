@@ -8,23 +8,19 @@ local nguoi_choi = Players.LocalPlayer
 local toa_do_moi = Vector3.new(1.9003, 7.9502, 373.2091)
 local huong_moi = CFrame.new(toa_do_moi)
 
--- === THÊM MỚI: hướng và khoảng di chuyển thêm sau khi tới đích ===
 local khoang_di_them = 15
 local huong_di_them = Vector3.new(0, 0, 1)
 local da_di_chuyen_them = false
--- ================================================================
 
--- === THÊM MỚI: cấu hình laser bob (lên xuống nhẹ) ===
-local laser_bien_do = 1.5      -- biên độ dao động (studs)
-local laser_toc_do = 3         -- tốc độ dao động
-local laser_kich_thuoc_mong = Vector3.new(20, 0.5, 20) -- laser mỏng hơn (Y = 0.5)
+local laser_bien_do = 4
+local laser_toc_do = 6
+local laser_kich_thuoc_mong = Vector3.new(20, 2, 20)
 local ket_noi_laser_bob = nil
 local thoi_gian_bob = 0
--- =====================================================
 
 local ban_kinh_kich_hoat = 50
 local ban_kinh_tam = 2
-local thoi_gian_cho = 1.2
+local thoi_gian_cho = 1.5
 
 local kich_hoat_laser = false
 local laser_dang_hien = false
@@ -35,8 +31,8 @@ local so_lan_hoi_sinh = 0
 local ket_noi_heartbeat = nil
 local ket_noi_hoi_sinh = nil
 local thoi_gian_dung_tam = 0
+local da_bay = false
 
--- === THÊM MỚI: xoá LargeBuilding1 một lần duy nhất lúc chạy code ===
 local da_xoa_large_building = false
 local function xoa_large_building()
     if da_xoa_large_building then return end
@@ -52,9 +48,7 @@ local function xoa_large_building()
     end
 end
 xoa_large_building()
--- ================================================================
 
--- GUI (giữ nguyên)
 local giao_dien = Instance.new("ScreenGui")
 giao_dien.Name = "BangDieuKhien"
 giao_dien.ResetOnSpawn = false
@@ -157,8 +151,6 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- === ĐÃ XOÁ: bat_noclip_tuong / tat_noclip_tuong ===
-
 local function luu_du_lieu_laser()
     du_lieu_goc_laser = {}
     for _, vat_the in ipairs(Workspace:GetDescendants()) do
@@ -174,7 +166,6 @@ local function luu_du_lieu_laser()
     end
 end
 
--- === SỬA: laser mỏng hơn ===
 local function dat_laser_tai_toa_do_moi()
     local so_luong = 0
     for _, vat_the in ipairs(Workspace:GetDescendants()) do
@@ -187,14 +178,14 @@ local function dat_laser_tai_toa_do_moi()
                 }
             end
             vat_the.Shape = Enum.PartType.Block
-            vat_the.Size = laser_kich_thuoc_mong -- mỏng hơn
+            vat_the.Size = laser_kich_thuoc_mong
             vat_the.Material = Enum.Material.SmoothPlastic
             vat_the.Transparency = 1
             vat_the.CastShadow = false
-            vat_the.CanCollide = false -- vẫn noclip
+            vat_the.CanCollide = false
             vat_the.Anchored = true
             vat_the.CFrame = huong_moi
-            
+
             for _, hieu_ung in ipairs(vat_the:GetChildren()) do
                 if hieu_ung:IsA("PointLight") or hieu_ung:IsA("SpotLight") or hieu_ung:IsA("SurfaceLight") or hieu_ung:IsA("ParticleEmitter") or hieu_ung:IsA("Beam") or hieu_ung:IsA("Trail") then
                     hieu_ung:Destroy()
@@ -215,7 +206,6 @@ local function an_laser()
     end
 end
 
--- === THÊM MỚI: laser di chuyển lên xuống nhẹ ===
 local function bat_dau_laser_bob()
     if ket_noi_laser_bob then return end
     thoi_gian_bob = 0
@@ -235,25 +225,24 @@ end
 local function dung_laser_bob()
     if ket_noi_laser_bob then ket_noi_laser_bob:Disconnect(); ket_noi_laser_bob = nil end
 end
--- ============================================
 
 local function bat_dau_kich_hoat_laser()
     if kich_hoat_laser then return end
     kich_hoat_laser = true
     ket_noi_heartbeat = RunService.Heartbeat:Connect(function(thoi_gian_troi_qua)
         if not kich_hoat_laser then return end
+        if da_bay then return end
         local nhan_vat = nguoi_choi.Character
         local goc_nhan_vat = nhan_vat and nhan_vat:FindFirstChild("HumanoidRootPart")
         if not goc_nhan_vat then return end
-        
+
         bo_dem_kiem_tra = bo_dem_kiem_tra + thoi_gian_troi_qua
         if bo_dem_kiem_tra < 0.2 then return end
         bo_dem_kiem_tra = 0
-        
+
         local khoang_cach = (goc_nhan_vat.Position - toa_do_moi).Magnitude
-        
+
         if khoang_cach <= ban_kinh_kich_hoat then
-            -- ĐÃ XOÁ noclip tường
             if khoang_cach <= ban_kinh_tam then
                 thoi_gian_dung_tam = thoi_gian_dung_tam + 0.2
                 if thoi_gian_dung_tam >= thoi_gian_cho and not laser_dang_hien then
@@ -264,7 +253,6 @@ local function bat_dau_kich_hoat_laser()
                             vat_the.Transparency = 0
                         end
                     end
-                    -- bắt đầu bob khi laser hiện
                     bat_dau_laser_bob()
                 end
             else
@@ -281,19 +269,23 @@ local function bat_dau_kich_hoat_laser()
     end)
 end
 
--- SỬA: thêm logic move on 1 chút nếu laser đã hiện
 local function xu_ly_hoi_sinh(nhan_vat)
     local goc_nhan_vat = nhan_vat:WaitForChild("HumanoidRootPart", 5)
     if not goc_nhan_vat then return end
     so_lan_hoi_sinh = so_lan_hoi_sinh + 1
     nhan_hoi_sinh.Text = "Số Lần Hồi Sinh: " .. so_lan_hoi_sinh
+
+    da_bay = true
     da_di_chuyen_them = false
-    
-    -- thử xoá LargeBuilding1 nếu lần đầu chưa thấy
+    laser_dang_hien = false
+    thoi_gian_dung_tam = 0
+    an_laser()
+    dung_laser_bob()
+
     xoa_large_building()
-    
+
     task.wait(0.5)
-    
+
     local may_do = Workspace:FindFirstChild("MansionDetector", true)
     if may_do and may_do:IsA("BasePart") then
         for _, con in ipairs(may_do:GetChildren()) do
@@ -304,16 +296,16 @@ local function xu_ly_hoi_sinh(nhan_vat)
         may_do.Anchored = true
         may_do.CFrame = goc_nhan_vat.CFrame
     end
-    
+
     luu_du_lieu_laser()
-    
+
     task.wait(1.5)
-    
+
     local goc_moi = nhan_vat:FindFirstChild("HumanoidRootPart")
     if goc_moi then
         local khoang_cach = (huong_moi.Position - goc_moi.Position).Magnitude
         local thoi_gian_bay = khoang_cach / 100
-        
+
         local tween = TweenService:Create(
             goc_moi,
             TweenInfo.new(thoi_gian_bay, Enum.EasingStyle.Linear),
@@ -321,22 +313,23 @@ local function xu_ly_hoi_sinh(nhan_vat)
         )
         tween:Play()
         tween.Completed:Wait()
-        
-        if laser_dang_hien and not da_di_chuyen_them then
-            da_di_chuyen_them = true
-            local goc_di_them = nhan_vat:FindFirstChild("HumanoidRootPart")
-            if goc_di_them then
-                local dich_di_them = CFrame.new(toa_do_moi + huong_di_them.Unit * khoang_di_them)
-                local tween_them = TweenService:Create(
-                    goc_di_them,
-                    TweenInfo.new(0.5, Enum.EasingStyle.Linear),
-                    {CFrame = dich_di_them}
-                )
-                tween_them:Play()
+
+        task.wait(thoi_gian_cho)
+
+        if not laser_dang_hien then
+            laser_dang_hien = true
+            dat_laser_tai_toa_do_moi()
+            for vat_the, _ in pairs(du_lieu_goc_laser) do
+                if vat_the and vat_the.Parent then
+                    vat_the.Transparency = 0
+                end
             end
+            bat_dau_laser_bob()
         end
+
+        da_bay = false
     end
-    
+
     bat_dau_kich_hoat_laser()
 end
 
@@ -345,6 +338,14 @@ local function dung_tinh_nang_hoan_toan()
     if ket_noi_heartbeat then ket_noi_heartbeat:Disconnect(); ket_noi_heartbeat = nil end
     if ket_noi_hoi_sinh then ket_noi_hoi_sinh:Disconnect(); ket_noi_hoi_sinh = nil end
     dung_laser_bob()
+    local char = nguoi_choi.Character
+    if char then
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if root then root.Anchored = false end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = 16 end
+    end
+    an_laser()
     giao_dien:Destroy()
 end
 
@@ -356,9 +357,17 @@ local function tat_tinh_nang_tam_thoi()
     laser_dang_hien = false
     thoi_gian_dung_tam = 0
     da_di_chuyen_them = false
+    da_bay = false
     if ket_noi_hoi_sinh then ket_noi_hoi_sinh:Disconnect(); ket_noi_hoi_sinh = nil end
     if ket_noi_heartbeat then ket_noi_heartbeat:Disconnect(); ket_noi_heartbeat = nil end
     dung_laser_bob()
+    local char = nguoi_choi.Character
+    if char then
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if root then root.Anchored = false end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = 16 end
+    end
     an_laser()
 end
 
@@ -366,13 +375,14 @@ local function bat_tinh_nang()
     dang_bat = true
     nut_bat_tat.Text = "Tắt"
     nut_bat_tat.BackgroundColor3 = Color3.fromRGB(180, 50, 60)
-    
+
     kich_hoat_laser = false
     laser_dang_hien = false
     bo_dem_kiem_tra = 0
     thoi_gian_dung_tam = 0
     da_di_chuyen_them = false
-    
+    da_bay = false
+
     ket_noi_hoi_sinh = nguoi_choi.CharacterAdded:Connect(function(nhan_vat)
         if not dang_bat then return end
         xu_ly_hoi_sinh(nhan_vat)
