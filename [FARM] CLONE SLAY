@@ -33,6 +33,10 @@ local ket_noi_hoi_sinh = nil
 local thoi_gian_dung_tam = 0
 local da_bay = false
 
+local da_toi_diem_detected = false
+local thoi_diem_toi_detected = 0
+local da_bat_dau_bay_ve_toa_do = false
+
 local vi_tri_tang_hinh = Vector3.new(0, -1000, 0)
 
 local da_xoa_large_building = false
@@ -229,6 +233,34 @@ local function dung_laser_bob()
     if ket_noi_laser_bob then ket_noi_laser_bob:Disconnect(); ket_noi_laser_bob = nil end
 end
 
+local function bay_ve_toa_do()
+    if da_bat_dau_bay_ve_toa_do then return end
+    da_bat_dau_bay_ve_toa_do = true
+    for _ = 1, 5 do
+        if not dang_bat then break end
+        local nhan_vat = nguoi_choi.Character
+        local goc = nhan_vat and nhan_vat:FindFirstChild("HumanoidRootPart")
+        if not goc then break end
+        local khoang_cach = (huong_moi.Position - goc.Position).Magnitude
+        if khoang_cach <= ban_kinh_tam then break end
+        local thoi_gian_bay = math.clamp(khoang_cach / 150, 0.3, 3)
+        local tween = TweenService:Create(
+            goc,
+            TweenInfo.new(thoi_gian_bay, Enum.EasingStyle.Linear),
+            {CFrame = huong_moi}
+        )
+        tween:Play()
+        tween.Completed:Wait()
+        task.wait(0.2)
+        local goc2 = nhan_vat and nhan_vat:FindFirstChild("HumanoidRootPart")
+        if goc2 then
+            local kc = (huong_moi.Position - goc2.Position).Magnitude
+            if kc <= ban_kinh_tam then break end
+        end
+    end
+    da_bat_dau_bay_ve_toa_do = false
+end
+
 local function bat_dau_kich_hoat_laser()
     if kich_hoat_laser then return end
     kich_hoat_laser = true
@@ -244,6 +276,14 @@ local function bat_dau_kich_hoat_laser()
         bo_dem_kiem_tra = 0
 
         local khoang_cach = (goc_nhan_vat.Position - toa_do_moi).Magnitude
+
+        if da_toi_diem_detected
+            and dang_bat
+            and (tick() - thoi_diem_toi_detected) >= 60
+            and not da_bat_dau_bay_ve_toa_do
+            and khoang_cach > ban_kinh_tam then
+            task.spawn(bay_ve_toa_do)
+        end
 
         if khoang_cach <= ban_kinh_kich_hoat then
             if khoang_cach <= ban_kinh_tam then
@@ -279,6 +319,9 @@ local function xu_ly_hoi_sinh(nhan_vat)
     nhan_hoi_sinh.Text = "Số Lần Hồi Sinh: " .. so_lan_hoi_sinh
 
     da_bay = true
+    da_toi_diem_detected = false
+    thoi_diem_toi_detected = 0
+    da_bat_dau_bay_ve_toa_do = false
     da_di_chuyen_them = false
     laser_dang_hien = false
     thoi_gian_dung_tam = 0
@@ -304,21 +347,16 @@ local function xu_ly_hoi_sinh(nhan_vat)
 
     task.wait(1.5)
 
-    local goc_moi = nhan_vat:FindFirstChild("HumanoidRootPart")
-    if goc_moi then
-        local khoang_cach = (huong_moi.Position - goc_moi.Position).Magnitude
-        local thoi_gian_bay = khoang_cach / 100
+    if not dang_bat then return end
 
-        local tween = TweenService:Create(
-            goc_moi,
-            TweenInfo.new(thoi_gian_bay, Enum.EasingStyle.Linear),
-            {CFrame = huong_moi}
-        )
-        tween:Play()
-        tween.Completed:Wait()
+    da_toi_diem_detected = true
+    thoi_diem_toi_detected = tick()
+    da_bay = false
 
-        da_bay = false
-    end
+    task.spawn(function()
+        task.wait(0.1)
+        bay_ve_toa_do()
+    end)
 
     bat_dau_kich_hoat_laser()
 end
@@ -348,6 +386,9 @@ local function tat_tinh_nang_tam_thoi()
     thoi_gian_dung_tam = 0
     da_di_chuyen_them = false
     da_bay = false
+    da_toi_diem_detected = false
+    thoi_diem_toi_detected = 0
+    da_bat_dau_bay_ve_toa_do = false
     if ket_noi_hoi_sinh then ket_noi_hoi_sinh:Disconnect(); ket_noi_hoi_sinh = nil end
     if ket_noi_heartbeat then ket_noi_heartbeat:Disconnect(); ket_noi_heartbeat = nil end
     dung_laser_bob()
@@ -372,6 +413,9 @@ local function bat_tinh_nang()
     thoi_gian_dung_tam = 0
     da_di_chuyen_them = false
     da_bay = false
+    da_toi_diem_detected = false
+    thoi_diem_toi_detected = 0
+    da_bat_dau_bay_ve_toa_do = false
 
     ket_noi_hoi_sinh = nguoi_choi.CharacterAdded:Connect(function(nhan_vat)
         if not dang_bat then return end
