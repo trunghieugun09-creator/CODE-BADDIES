@@ -3,6 +3,8 @@ local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
 local nguoi_choi = Players.LocalPlayer
 
 local toa_do_moi = Vector3.new(1.9003, 8.9302, 373.2091)
@@ -14,6 +16,53 @@ local muc_tieu = nil
 local dang_stomp = false
 local tuong_da_tat = {}
 local da_bay = false
+
+local webhook_url = ""
+local tong_slay_lan_truoc = 0
+local lan_bao_cuoi = 0
+
+local dang_chay = false
+local ket_noi_heartbeat = nil
+local ket_noi_baocao = nil
+local ket_noi_hoisinh = nil
+
+local function gui_webhook_embed(embed)
+    if webhook_url == "" then return false, "webhook rỗng" end
+    local payload = { username = "Turkey Stomp Monitor", embeds = { embed } }
+    local body = HttpService:JSONEncode(payload)
+    if request then
+        local ok, res = pcall(function()
+            return request({
+                Url = webhook_url,
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = body
+            })
+        end)
+        if ok then return true else warn("[Webhook] request lỗi:", res) end
+    end
+    local ok, err = pcall(function()
+        HttpService:PostAsync(webhook_url, body, Enum.HttpContentType.ApplicationJson)
+    end)
+    if ok then return true else warn("[Webhook] PostAsync lỗi:", err); return false, err end
+end
+
+local function lay_tong_slay()
+    local stats = nguoi_choi:FindFirstChild("leaderstats")
+    if stats then
+        local slay = stats:FindFirstChild("Slays")
+        if slay then return slay.Value end
+    end
+    return 0
+end
+
+local function ten_hien_thi()
+    return nguoi_choi.DisplayName .. " (" .. nguoi_choi.Name .. ")"
+end
+
+local function thoi_gian_hien_tai()
+    return os.date("%H:%M:%S")
+end
 
 local function bat_noclip_tuong()
     for _, vat_the in ipairs(Workspace:GetDescendants()) do
@@ -46,19 +95,14 @@ local function tim_muc_tieu()
     local nhan_vat = nguoi_choi.Character
     local goc = nhan_vat and nhan_vat:FindFirstChild("HumanoidRootPart")
     if not goc then return nil end
-    
     local gan_nhat = nil
-    local khoang_cach_min = math.huge  -- lấy mục tiêu gần tọa độ gốc nhất
-    
+    local khoang_cach_min = math.huge
     for _, nguoi_khac in ipairs(Players:GetPlayers()) do
         if nguoi_khac ~= nguoi_choi then
             local char_khac = nguoi_khac.Character
             local goc_khac = char_khac and char_khac:FindFirstChild("HumanoidRootPart")
             local mau_khac = char_khac and char_khac:FindFirstChildOfClass("Humanoid")
-            
-            -- Điều kiện: còn sống, máu < 10
             if goc_khac and mau_khac and mau_khac.Health > 0 and mau_khac.Health < 10 then
-                -- ĐO KHOẢNG CÁCH TỪ MỤC TIÊU TỚI TỌA ĐỘ GỐC
                 local khoang_cach_toi_goc = (goc_khac.Position - toa_do_moi).Magnitude
                 if khoang_cach_toi_goc <= ban_kinh_kich_hoat then
                     if khoang_cach_toi_goc < khoang_cach_min then
@@ -73,28 +117,23 @@ local function tim_muc_tieu()
 end
 
 local function xu_ly_hien_tai()
+    if not dang_chay then return end
     local nhan_vat = nguoi_choi.Character
     local goc = nhan_vat and nhan_vat:FindFirstChild("HumanoidRootPart")
     local humanoid = nhan_vat and nhan_vat:FindFirstChildOfClass("Humanoid")
     if not goc or not humanoid then return end
-    
-    -- Bật noclip nếu BẠN ở trong bán kính 150 quanh tọa độ gốc
     local khoang_cach_toi_dich = (goc.Position - toa_do_moi).Magnitude
     if khoang_cach_toi_dich <= ban_kinh_kich_hoat then
         bat_noclip_tuong()
     else
         tat_noclip_tuong()
     end
-    
     local muc_tieu_moi = tim_muc_tieu()
-    
     if muc_tieu_moi then
         local char_muc_tieu = muc_tieu_moi.Character
         local goc_muc_tieu = char_muc_tieu and char_muc_tieu:FindFirstChild("HumanoidRootPart")
-        
         if goc_muc_tieu then
             humanoid:MoveTo(goc_muc_tieu.Position)
-            
             local khoang_cach = (goc_muc_tieu.Position - goc.Position).Magnitude
             if khoang_cach <= 5 then
                 if remote_stomp and not dang_stomp then
@@ -112,13 +151,12 @@ local function xu_ly_hien_tai()
     end
 end
 
-nguoi_choi.CharacterAdded:Connect(function(nhan_vat)
+local function xu_ly_hoi_sinh(nhan_vat)
+    if not dang_chay then return end
     local goc = nhan_vat:WaitForChild("HumanoidRootPart", 5)
     if not goc then return end
-    
     da_bay = false
     task.wait(0.5)
-    
     local may_do = Workspace:FindFirstChild("MansionDetector", true)
     if may_do and may_do:IsA("BasePart") then
         for _, con in ipairs(may_do:GetChildren()) do
@@ -129,25 +167,265 @@ nguoi_choi.CharacterAdded:Connect(function(nhan_vat)
         may_do.Anchored = true
         may_do.CFrame = goc.CFrame
     end
-    
     task.wait(1.5)
-    
+    if not dang_chay then return end
     local goc_moi = nhan_vat:FindFirstChild("HumanoidRootPart")
     if goc_moi then
         local khoang_cach = (huong_moi.Position - goc_moi.Position).Magnitude
         local thoi_gian_bay = khoang_cach / 100
-        
-        local tween = TweenService:Create(
-            goc_moi,
-            TweenInfo.new(thoi_gian_bay, Enum.EasingStyle.Linear),
-            {CFrame = huong_moi}
-        )
+        local tween = TweenService:Create(goc_moi, TweenInfo.new(thoi_gian_bay, Enum.EasingStyle.Linear), {CFrame = huong_moi})
         tween:Play()
+    end
+end
+
+local function bat_dau_bao_cao()
+    if ket_noi_baocao then task.cancel(ket_noi_baocao); ket_noi_baocao = nil end
+    tong_slay_lan_truoc = lay_tong_slay()
+    lan_bao_cuoi = tick()
+    ket_noi_baocao = task.spawn(function()
+        while dang_chay do
+            task.wait(5)
+            if not dang_chay then break end
+            if webhook_url == "" then continue end
+            if tick() - lan_bao_cuoi >= 120 then
+                local tong_slay_hien_tai = lay_tong_slay()
+                local slay_2phut = tong_slay_hien_tai - tong_slay_lan_truoc
+                local trang_thai, mau
+                if slay_2phut > 0 then
+                    trang_thai = "✅ Bình thường"
+                    mau = 5763719
+                else
+                    trang_thai = "❌ Clone đã out (2 phút không tăng slay)"
+                    mau = 15548997
+                end
+                gui_webhook_embed({
+                    ["title"] = "Stomp Report",
+                    ["color"] = mau,
+                    ["fields"] = {
+                        { name = "Người dùng", value = ten_hien_thi(), inline = false },
+                        { name = "Slay (2 phút)", value = tostring(slay_2phut), inline = false },
+                        { name = "Tổng slay", value = tostring(tong_slay_hien_tai), inline = false },
+                        { name = "Thời gian", value = thoi_gian_hien_tai(), inline = false },
+                        { name = "Trạng thái", value = trang_thai, inline = false },
+                    },
+                    ["footer"] = { text = "Turkey Monitor - " .. os.date("%Y-%m-%d") }
+                })
+                tong_slay_lan_truoc = tong_slay_hien_tai
+                lan_bao_cuoi = tick()
+            end
+        end
+    end)
+end
+
+local function bat_dau()
+    dang_chay = true
+    muc_tieu = nil
+    if ket_noi_heartbeat then ket_noi_heartbeat:Disconnect() end
+    ket_noi_heartbeat = RunService.Heartbeat:Connect(xu_ly_hien_tai)
+    if ket_noi_hoisinh then ket_noi_hoisinh:Disconnect() end
+    ket_noi_hoisinh = nguoi_choi.CharacterAdded:Connect(xu_ly_hoi_sinh)
+    bat_dau_bao_cao()
+end
+
+local function dung()
+    dang_chay = false
+    if ket_noi_heartbeat then ket_noi_heartbeat:Disconnect(); ket_noi_heartbeat = nil end
+    if ket_noi_hoisinh then ket_noi_hoisinh:Disconnect(); ket_noi_hoisinh = nil end
+    if ket_noi_baocao then task.cancel(ket_noi_baocao); ket_noi_baocao = nil end
+    tat_noclip_tuong()
+    muc_tieu = nil
+end
+
+local giao_dien = Instance.new("ScreenGui")
+giao_dien.Name = "StompWebhookGui"
+giao_dien.ResetOnSpawn = false
+giao_dien.DisplayOrder = 999999
+pcall(function() giao_dien.Parent = game:GetService("CoreGui") end)
+if not giao_dien.Parent then giao_dien.Parent = nguoi_choi:WaitForChild("PlayerGui") end
+
+local khung = Instance.new("Frame", giao_dien)
+khung.Size = UDim2.new(0, 300, 0, 210)
+khung.Position = UDim2.new(0.5, -150, 0.5, -105)
+khung.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+khung.BackgroundTransparency = 0.2
+khung.BorderSizePixel = 0
+khung.Active = true
+khung.ClipsDescendants = true
+Instance.new("UICorner", khung).CornerRadius = UDim.new(0, 10)
+
+local thanh_td = Instance.new("Frame", khung)
+thanh_td.Name = "ThanhTieuDe"
+thanh_td.Size = UDim2.new(1, 0, 0, 30)
+thanh_td.BackgroundTransparency = 1
+thanh_td.Active = true
+
+local tieu_de = Instance.new("TextLabel", thanh_td)
+tieu_de.Size = UDim2.new(1, -70, 1, 0)
+tieu_de.Position = UDim2.new(0, 10, 0, 0)
+tieu_de.BackgroundTransparency = 1
+tieu_de.Text = "Stomp + Webhook"
+tieu_de.TextColor3 = Color3.fromRGB(220, 220, 255)
+tieu_de.Font = Enum.Font.GothamBold
+tieu_de.TextSize = 14
+tieu_de.TextXAlignment = Enum.TextXAlignment.Left
+
+local nut_thu_nho = Instance.new("TextButton", thanh_td)
+nut_thu_nho.Size = UDim2.new(0, 24, 0, 24)
+nut_thu_nho.Position = UDim2.new(1, -56, 0, 3)
+nut_thu_nho.BackgroundColor3 = Color3.fromRGB(70, 90, 140)
+nut_thu_nho.Text = "—"
+nut_thu_nho.TextColor3 = Color3.new(1, 1, 1)
+nut_thu_nho.Font = Enum.Font.GothamBold
+nut_thu_nho.TextSize = 14
+Instance.new("UICorner", nut_thu_nho).CornerRadius = UDim.new(0, 6)
+
+local nut_x = Instance.new("TextButton", thanh_td)
+nut_x.Size = UDim2.new(0, 24, 0, 24)
+nut_x.Position = UDim2.new(1, -28, 0, 3)
+nut_x.BackgroundColor3 = Color3.fromRGB(180, 50, 60)
+nut_x.Text = "X"
+nut_x.TextColor3 = Color3.new(1, 1, 1)
+nut_x.Font = Enum.Font.GothamBold
+nut_x.TextSize = 12
+Instance.new("UICorner", nut_x).CornerRadius = UDim.new(0, 6)
+
+local than_noi_dung = Instance.new("Frame", khung)
+than_noi_dung.Name = "ThanNoiDung"
+than_noi_dung.Size = UDim2.new(1, 0, 1, -30)
+than_noi_dung.Position = UDim2.new(0, 0, 0, 30)
+than_noi_dung.BackgroundTransparency = 1
+
+local o_nhap = Instance.new("TextBox", than_noi_dung)
+o_nhap.Size = UDim2.new(1, -20, 0, 35)
+o_nhap.Position = UDim2.new(0, 10, 0, 5)
+o_nhap.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+o_nhap.Text = ""
+o_nhap.PlaceholderText = "Dán webhook URL vào đây..."
+o_nhap.TextColor3 = Color3.fromRGB(220, 220, 255)
+o_nhap.Font = Enum.Font.Gotham
+o_nhap.TextSize = 12
+o_nhap.ClearTextOnFocus = false
+o_nhap.TextXAlignment = Enum.TextXAlignment.Left
+Instance.new("UICorner", o_nhap).CornerRadius = UDim.new(0, 6)
+
+local nut_luu = Instance.new("TextButton", than_noi_dung)
+nut_luu.Size = UDim2.new(1, -20, 0, 30)
+nut_luu.Position = UDim2.new(0, 10, 0, 45)
+nut_luu.BackgroundColor3 = Color3.fromRGB(60, 80, 140)
+nut_luu.Text = "Lưu Webhook"
+nut_luu.TextColor3 = Color3.new(1, 1, 1)
+nut_luu.Font = Enum.Font.GothamBold
+nut_luu.TextSize = 13
+Instance.new("UICorner", nut_luu).CornerRadius = UDim.new(0, 6)
+
+local nhan_trang_thai = Instance.new("TextLabel", than_noi_dung)
+nhan_trang_thai.Size = UDim2.new(1, -20, 0, 18)
+nhan_trang_thai.Position = UDim2.new(0, 10, 0, 78)
+nhan_trang_thai.BackgroundTransparency = 1
+nhan_trang_thai.Text = ""
+nhan_trang_thai.TextColor3 = Color3.fromRGB(180, 255, 180)
+nhan_trang_thai.Font = Enum.Font.Gotham
+nhan_trang_thai.TextSize = 11
+
+local nut_start = Instance.new("TextButton", than_noi_dung)
+nut_start.Size = UDim2.new(1, -20, 0, 40)
+nut_start.Position = UDim2.new(0, 10, 0, 100)
+nut_start.BackgroundColor3 = Color3.fromRGB(40, 140, 90)
+nut_start.Text = "START"
+nut_start.TextColor3 = Color3.new(1, 1, 1)
+nut_start.Font = Enum.Font.GothamBold
+nut_start.TextSize = 15
+Instance.new("UICorner", nut_start).CornerRadius = UDim.new(0, 8)
+
+local dang_keo = false
+local vi_tri_chuot_bat_dau = nil
+local vi_tri_khung_bat_dau = nil
+
+thanh_td.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dang_keo = true
+        vi_tri_chuot_bat_dau = input.Position
+        vi_tri_khung_bat_dau = khung.Position
     end
 end)
 
-RunService.Heartbeat:Connect(function()
-    if nguoi_choi.Character then
-        xu_ly_hien_tai()
+UserInputService.InputChanged:Connect(function(input)
+    if dang_keo and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local chenh_lech = input.Position - vi_tri_chuot_bat_dau
+        khung.Position = UDim2.new(
+            vi_tri_khung_bat_dau.X.Scale, vi_tri_khung_bat_dau.X.Offset + chenh_lech.X,
+            vi_tri_khung_bat_dau.Y.Scale, vi_tri_khung_bat_dau.Y.Offset + chenh_lech.Y
+        )
     end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dang_keo = false
+    end
+end)
+
+local dang_thu_nho = false
+nut_thu_nho.MouseButton1Click:Connect(function()
+    dang_thu_nho = not dang_thu_nho
+    if dang_thu_nho then
+        than_noi_dung.Visible = false
+        khung.Size = UDim2.new(0, 300, 0, 30)
+        nut_thu_nho.Text = "+"
+    else
+        than_noi_dung.Visible = true
+        khung.Size = UDim2.new(0, 300, 0, 210)
+        nut_thu_nho.Text = "—"
+    end
+end)
+
+nut_luu.MouseButton1Click:Connect(function()
+    webhook_url = o_nhap.Text
+    if webhook_url == "" then
+        nhan_trang_thai.Text = "❌ Chưa nhập webhook"
+        nhan_trang_thai.TextColor3 = Color3.fromRGB(255, 150, 150)
+        return
+    end
+    nhan_trang_thai.Text = "Đang gửi test..."
+    nhan_trang_thai.TextColor3 = Color3.fromRGB(255, 220, 150)
+    local ok = gui_webhook_embed({
+        ["title"] = "Kết nối thành công",
+        ["color"] = 5763719,
+        ["fields"] = {
+            { name = "Người dùng", value = ten_hien_thi(), inline = false },
+            { name = "Thời gian", value = thoi_gian_hien_tai(), inline = false },
+        }
+    })
+    if ok then
+        nhan_trang_thai.Text = "✅ Đã gửi test - check Discord"
+        nhan_trang_thai.TextColor3 = Color3.fromRGB(180, 255, 180)
+        nut_luu.Text = "Đã Lưu!"
+        task.wait(2)
+        nut_luu.Text = "Lưu Webhook"
+    else
+        nhan_trang_thai.Text = "❌ Lỗi - xem Output"
+        nhan_trang_thai.TextColor3 = Color3.fromRGB(255, 150, 150)
+    end
+end)
+
+nut_start.MouseButton1Click:Connect(function()
+    if dang_chay then
+        dung()
+        nut_start.Text = "START"
+        nut_start.BackgroundColor3 = Color3.fromRGB(40, 140, 90)
+    else
+        if webhook_url == "" then
+            nhan_trang_thai.Text = "⚠️ Nhập webhook trước đã"
+            nhan_trang_thai.TextColor3 = Color3.fromRGB(255, 220, 150)
+            return
+        end
+        bat_dau()
+        nut_start.Text = "STOP"
+        nut_start.BackgroundColor3 = Color3.fromRGB(180, 50, 60)
+    end
+end)
+
+nut_x.MouseButton1Click:Connect(function()
+    if dang_chay then dung() end
+    giao_dien:Destroy()
 end)
